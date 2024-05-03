@@ -8,6 +8,7 @@ import (
 	"github.com/seemsod1/ancy/internal/handlers"
 	"github.com/seemsod1/ancy/internal/models"
 	"github.com/seemsod1/ancy/internal/render"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"log"
@@ -103,6 +104,118 @@ func runSchemasMigration(db *gorm.DB) error {
 		return err
 	}
 
+	if err := addDefaultRoles(db); err != nil {
+		return err
+	}
+
+	if err := addAdminUser(db); err != nil {
+		return err
+	}
+	if err := addExhibitTypes(db); err != nil {
+		return err
+
+	}
+	if err := addExhibitStatuses(db); err != nil {
+		return err
+	}
 	return nil
 
+}
+
+func addDefaultRoles(db *gorm.DB) error {
+	if count := db.Find(&models.UserRole{}).RowsAffected; count > 0 {
+		return nil
+	}
+
+	roles := []models.UserRole{
+		{
+			Name: "User",
+		},
+		{
+			Name: "Admin",
+		},
+	}
+
+	for _, role := range roles {
+		if err := db.Create(&role).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+func addAdminUser(db *gorm.DB) error {
+
+	if count := db.Find(&models.User{Username: "admin"}).RowsAffected; count > 0 {
+		return nil
+	}
+
+	pass, err := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	user := models.User{
+		Username: "admin",
+		Email:    "vadim@mail.com",
+		Password: string(pass),
+		RoleID:   2,
+	}
+
+	if err = db.Create(&user).Error; err != nil {
+		return err
+	}
+	return nil
+}
+func addExhibitTypes(db *gorm.DB) error {
+	if count := db.Find(&models.ExhibitType{}).RowsAffected; count > 0 {
+		return nil
+	}
+
+	types := []models.ExhibitType{
+		{
+			Name: "Photo",
+		},
+		{
+			Name: "Video",
+		},
+		{
+			Name: "Audio",
+		},
+		{
+			Name: "Text",
+		},
+	}
+
+	for _, t := range types {
+		if err := db.Create(&t).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+func addExhibitStatuses(db *gorm.DB) error {
+	if count := db.Find(&models.ExhibitStatus{}).RowsAffected; count > 0 {
+		return nil
+	}
+
+	statuses := []models.ExhibitStatus{
+		{
+			Name: "Pending",
+		},
+		{
+			Name: "Approved",
+		},
+		{
+			Name: "Rejected",
+		},
+	}
+
+	for _, s := range statuses {
+		if err := db.Create(&s).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

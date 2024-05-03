@@ -4,7 +4,7 @@ import "time"
 
 type User struct {
 	ID               int      `gorm:"primaryKey"`
-	Username         string   `gorm:"size:255;not null" json:"username"`
+	Username         string   `gorm:"size:255;not null,unique" json:"username"`
 	Email            string   `gorm:"unique;not null"  json:"email"`
 	Password         string   `gorm:"size:255;not null" json:"password"`
 	ProfilePhotoPath string   `gorm:"size:255" `

@@ -13,27 +13,44 @@ func routes(app *config.AppConfig) http.Handler {
 
 	mux.Use(middleware.Recoverer)
 	mux.Use(middleware.Logger)
+	mux.Use(SessionLoad)
 
-	mux.Get("/user-role", handlers.Repo.GetAllUserRoles)
-	mux.Post("/user-role/create", handlers.Repo.CreateUserRole)
-	mux.Put("/user-role/update", handlers.Repo.UpdateUserRole)
-	mux.Delete("/user-role/delete/{id}", handlers.Repo.DeleteUserRole)
+	// Роути для управління ролями користувачів
+	mux.Route("/user-role", func(r chi.Router) {
+		r.Get("/", handlers.Repo.GetAllUserRoles)              // Тільки для адміна
+		r.Post("/create", handlers.Repo.CreateUserRole)        // Тільки для адміна
+		r.Put("/update", handlers.Repo.UpdateUserRole)         // Тільки для адміна
+		r.Delete("/delete/{id}", handlers.Repo.DeleteUserRole) // Тільки для адміна
+	})
 
-	mux.Get("/user", handlers.Repo.GetAllUsers)
-	mux.Post("/user/create", handlers.Repo.CreateUser)
-	//mux.Put("/user/update", handlers.Repo.UpdateUser)
-	//mux.Delete("/user/delete/{id}", handlers.Repo.DeleteUser)
+	// Роутер для залогінених користувачів
+	authRouter := chi.NewRouter()
+	authRouter.Use(SessionLoad)
+	authRouter.Use(AuthUser)
 
-	join := chi.NewRouter()
-	join.Use(SessionLoad)
+	authRouter.Post("/logout", handlers.Repo.Logout)
+	authRouter.Post("/exhibit/create", handlers.Repo.CreateExhibit) // Зареєстровані користувачі
+	//authRouter.Put("/exhibit/update", handlers.Repo.UpdateExhibit) // Зареєстровані користувачі
+	authRouter.Delete("/exhibit/delete/{id}", handlers.Repo.DeleteExhibit) // Зареєстровані користувачі
+	authRouter.Get("/exhibit/my", handlers.Repo.GetMyExhibits)             // Зареєстровані користувачі
+	authRouter.Get("/me", handlers.Repo.GetMe)                             // Зареєстровані користувачі
 
-	//join.Get("/singUp", controllers.Repo.SingUpPage)
-	//join.Post("/singUp", controllers.Repo.UserSingUp)
-	//
-	join.Post("/logout", handlers.Repo.Logout)
-	join.Post("/login", handlers.Repo.Login)
-	join.Post("/sing-up", handlers.Repo.SingUp)
-	mux.Mount("/join", join)
+	// Роутер для адміністратора
+	adminRouter := chi.NewRouter()
+	adminRouter.Use(SessionLoad)
+	adminRouter.Use(AuthUser)
+	adminRouter.Use(AdminOnly)
+
+	adminRouter.Post("/exhibit/approve/{id}", handlers.Repo.ApproveExhibit) // Тільки для адміна
+
+	mux.Mount("/user", authRouter)   // Встановлюємо роутер для залогінених користувачів
+	mux.Mount("/admin", adminRouter) // Встановлюємо роутер для адміністратора
+
+	// Роутер для гостя
+	mux.Post("/login", handlers.Repo.Login)            // Гість
+	mux.Post("/sign-up", handlers.Repo.SignUp)         // Гість
+	mux.Get("/exhibit", handlers.Repo.GetAllExhibits)  // Гість
+	mux.Get("/exhibit/{id}", handlers.Repo.GetExhibit) // Гість
 
 	return mux
 }
