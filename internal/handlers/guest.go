@@ -6,10 +6,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	rend "github.com/go-chi/render"
 	"github.com/go-playground/validator/v10"
+	"github.com/seemsod1/ancy/internal/helpers"
 	"github.com/seemsod1/ancy/internal/lib/api/response"
 	"github.com/seemsod1/ancy/internal/models"
 	"golang.org/x/crypto/bcrypt"
+	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -25,6 +28,13 @@ type SignUpForm struct {
 }
 
 func (m *Repository) Login(w http.ResponseWriter, r *http.Request) {
+	_, ok := m.App.Session.Get(r.Context(), "user_id").(int)
+	if ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		rend.JSON(w, r, response.Error("already logged in"))
+		return
+	}
+
 	_ = m.App.Session.RenewToken(r.Context())
 
 	var req LoginForm
@@ -77,18 +87,65 @@ func (m *Repository) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Repository) SignUp(w http.ResponseWriter, r *http.Request) {
-	var req SignUpForm
-
-	if err := rend.DecodeJSON(r.Body, &req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		rend.JSON(w, r, response.Error("invalid request"))
+	_, ok := m.App.Session.Get(r.Context(), "user_id").(int)
+	if ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		rend.JSON(w, r, response.Error("already logged in"))
 		return
-	} else if err = validator.New().Struct(req); err != nil {
+	}
+
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		rend.JSON(w, r, response.Error("file too big"))
+		return
+	}
+
+	var req SignUpForm
+	req.Username = r.FormValue("username")
+	req.Email = r.FormValue("email")
+	req.Password = r.FormValue("password")
+
+	// Validate form inputs
+	if err := validator.New().Struct(req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		rend.JSON(w, r, response.Error("invalid request"))
 		return
 	}
 
+	// Process profile photo
+	var profilePhotoPath string
+	profilePhoto, fileHeader, err := r.FormFile("profile_photo")
+	if err != nil {
+		profilePhotoPath = "default.png"
+	} else {
+		defer profilePhoto.Close()
+
+		finalTitle, err := helpers.GenerateHashedFileName(req.Username)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			rend.JSON(w, r, response.Error("failed to generate file name"))
+			return
+		}
+		fileFormat := helpers.GetFileFormat(fileHeader.Filename)
+		profilePhotoPath = finalTitle + "." + fileFormat
+
+		newFile, err := os.Create("storage/users/" + profilePhotoPath)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			rend.JSON(w, r, response.Error("failed to save file"))
+			return
+		}
+		defer newFile.Close()
+
+		_, err = io.Copy(newFile, profilePhoto)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			rend.JSON(w, r, response.Error("failed to save file"))
+			return
+		}
+	}
+
+	// Hash password
 	pass, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -101,11 +158,12 @@ func (m *Repository) SignUp(w http.ResponseWriter, r *http.Request) {
 	user.Username = req.Username
 	user.Email = req.Email
 	user.Password = req.Password
+	user.ProfilePhotoPath = profilePhotoPath
 
 	err = m.App.DB.Create(&user).Error
 	if err != nil {
 		w.WriteHeader(http.StatusConflict)
-		rend.JSON(w, r, response.Error("user with this email already exists or failed to create user"))
+		rend.JSON(w, r, response.Error("user with this email or username already exists or failed to create user"))
 		return
 	}
 
@@ -132,7 +190,7 @@ func (m *Repository) GetExhibit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	role := m.GetLoggedInUserRole(r.Context())
-	if (role == "User" || role == "") && exhibit.Status.Name == "Pending" && exhibit.AuthorID != m.GetLoggedInUserID(r.Context()) {
+	if (role == "User" || role == "") && (exhibit.Status.Name == "Pending" || exhibit.Status.Name == "Rejected") && exhibit.AuthorID != m.GetLoggedInUserID(r.Context()) {
 		w.WriteHeader(http.StatusUnauthorized)
 		rend.JSON(w, r, response.Error("unauthorized"))
 		return
@@ -210,4 +268,24 @@ func (m *Repository) GetAllExhibits(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(exhibits)
+}
+
+func (m Repository) GetUser(w http.ResponseWriter, r *http.Request) {
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		rend.JSON(w, r, response.Error("username is required"))
+		return
+	}
+
+	var user models.User
+	if err := m.App.DB.Where("username = ?", username).Take(&user).Error; err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		rend.JSON(w, r, response.Error("user not found"))
+		return
+	}
+	user.Password = ""
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(user)
 }

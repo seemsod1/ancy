@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	rend "github.com/go-chi/render"
+	"github.com/seemsod1/ancy/internal/helpers"
 	"github.com/seemsod1/ancy/internal/lib/api/response"
 	"github.com/seemsod1/ancy/internal/models"
 	"io"
@@ -22,32 +23,6 @@ func (m *Repository) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = m.App.Session.Destroy(r.Context())
-}
-
-func (m *Repository) GetMe(w http.ResponseWriter, r *http.Request) {
-	id, pk := m.App.Session.Get(r.Context(), "user_id").(int)
-	if !pk {
-		//you are not logged in
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-	var user models.User
-	if err := m.App.DB.First(&user, id).Error; err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	user.Password = ""
-	jsonData, err := json.Marshal(user)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		rend.JSON(w, r, response.Error("failed to marshal exhibits to JSON"))
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(jsonData)
-
 }
 
 func (m *Repository) CreateExhibit(w http.ResponseWriter, r *http.Request) {
@@ -79,8 +54,17 @@ func (m *Repository) CreateExhibit(w http.ResponseWriter, r *http.Request) {
 		rend.JSON(w, r, response.Error("title is required"))
 		return
 	}
-	filePath := "storage/" + fileHeader.Filename
-	newFile, err := os.Create(filePath)
+	finalTitle, err := helpers.GenerateHashedFileName(title)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rend.JSON(w, r, response.Error("failed to generate file name"))
+		return
+
+	}
+
+	fileFormat := helpers.GetFileFormat(fileHeader.Filename)
+	filePath := finalTitle + "." + fileFormat
+	newFile, err := os.Create("storage/" + filePath)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		rend.JSON(w, r, response.Error("failed to save file"))
@@ -127,6 +111,7 @@ func (m *Repository) CreateExhibit(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 	rend.JSON(w, r, response.OK())
+
 }
 
 func (m *Repository) GetMyExhibits(w http.ResponseWriter, r *http.Request) {
@@ -177,12 +162,82 @@ func (m *Repository) DeleteExhibit(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		rend.JSON(w, r, response.Error("forbidden"))
 		return
+	}
 
+	if err := os.Remove("/storage" + exhibit.AssetPath); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rend.JSON(w, r, response.Error("failed to delete exhibit file"))
+		return
 	}
 
 	if err := m.App.DB.Delete(&exhibit).Error; err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		rend.JSON(w, r, response.Error("failed to delete exhibit"))
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (m *Repository) UpdatePhoto(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		rend.JSON(w, r, response.Error("file too big"))
+		return
+	}
+
+	file, fileHeader, err := r.FormFile("file") // Отримуємо файл з форми
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		rend.JSON(w, r, response.Error("failed to get file"))
+		return
+	}
+	defer file.Close()
+
+	authorID, _ := m.App.Session.Get(r.Context(), "user_id").(int)
+	var user models.User
+	if err := m.App.DB.First(&user, authorID).Error; err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	finalTitle, err := helpers.GenerateHashedFileName(user.Username)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rend.JSON(w, r, response.Error("failed to generate file name"))
+		return
+
+	}
+
+	fileFormat := helpers.GetFileFormat(fileHeader.Filename)
+	filePath := finalTitle + "." + fileFormat
+	newFile, err := os.Create("storage/users/" + filePath)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rend.JSON(w, r, response.Error("failed to save file"))
+		return
+	}
+	defer newFile.Close()
+
+	_, err = io.Copy(newFile, file)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rend.JSON(w, r, response.Error("failed to save file"))
+		return
+	}
+	// Delete old photo
+	if user.ProfilePhotoPath != "default.png" {
+		if err = os.Remove("storage/users/" + user.ProfilePhotoPath); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			rend.JSON(w, r, response.Error("failed to delete old photo"))
+			return
+		}
+	}
+
+	user.ProfilePhotoPath = filePath
+	if err = m.App.DB.Save(&user).Error; err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rend.JSON(w, r, response.Error("failed to update user"))
 		return
 	}
 
