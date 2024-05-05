@@ -92,7 +92,7 @@ func (m Repository) RemoveAdmin(w http.ResponseWriter, r *http.Request) {
 		rend.JSON(w, r, response.Error("user ID is required"))
 		return
 	}
-	if userID == "1" || userID == uID {
+	if uID != "1" {
 		w.WriteHeader(http.StatusForbidden)
 		rend.JSON(w, r, response.Error("you cannot remove the main admin user"))
 		return
