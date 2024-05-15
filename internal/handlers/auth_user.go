@@ -79,6 +79,43 @@ func (m *Repository) CreateExhibit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var ExhibitType models.ExhibitType
+	if err = m.App.DB.First(&ExhibitType, typeID).Error; err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		rend.JSON(w, r, response.Error("type not found"))
+		return
+	}
+	var previewPhotoPath string
+	if ExhibitType.Name != "Photo" {
+
+		//process preview photo
+		previewPhoto, previewPhotoHeader, err := r.FormFile("preview_photo")
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			rend.JSON(w, r, response.Error("failed to get preview photo"))
+			return
+		}
+		defer previewPhoto.Close()
+
+		previewPhotoPath = finalTitle + "_preview." + helpers.GetFileFormat(previewPhotoHeader.Filename)
+		newPreviewPhoto, err := os.Create("storage/" + previewPhotoPath)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			rend.JSON(w, r, response.Error("failed to save preview photo"))
+			return
+		}
+		defer newPreviewPhoto.Close()
+
+		_, err = io.Copy(newPreviewPhoto, previewPhoto)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			rend.JSON(w, r, response.Error("failed to save preview photo"))
+			return
+		}
+	} else {
+		previewPhotoPath = filePath
+	}
+
 	authorID, _ := m.App.Session.Get(r.Context(), "user_id").(int)
 	var statusID int
 	if err = m.App.DB.Table("exhibit_statuses").Where("name = ?", "Pending").Pluck("id", &statusID).Error; err != nil {
@@ -99,6 +136,7 @@ func (m *Repository) CreateExhibit(w http.ResponseWriter, r *http.Request) {
 		TypeID:      typeID,
 		Description: description,
 		AssetPath:   filePath,
+		PreviewPath: previewPhotoPath,
 		AuthorID:    authorID,
 		StatusID:    statusID,
 	}
@@ -164,7 +202,7 @@ func (m *Repository) DeleteExhibit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := os.Remove("/storage" + exhibit.AssetPath); err != nil {
+	if err := os.Remove("storage/" + exhibit.AssetPath); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		rend.JSON(w, r, response.Error("failed to delete exhibit file"))
 		return

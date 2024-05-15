@@ -1,0 +1,115 @@
+{{template "base" .}}
+
+{{define "content"}}
+    <div class="container mt-5">
+        <!-- Asset display -->
+        <div class="text-center mb-4">
+            <!-- Asset placeholder -->
+            <div class="card">
+                <div class="card-body">
+                    <div id="assetDisplay"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Exhibit details -->
+        <div class="row">
+            <!-- Left column for title and description -->
+            <div class="col-md-8"> <!-- Adjust the column size as needed -->
+                <div class="card">
+                    <div class="card-body">
+                        <!-- Title placeholder -->
+                        <h5 class="card-title" id="titleDisplay"></h5>
+                        <!-- Description placeholder -->
+                        <p class="card-text" id="descDisplay"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right column for author information -->
+            <div class="col-md-4"> <!-- Adjust the column size as needed -->
+                <div class="card">
+                    <div class="card-body d-flex flex-column">
+                        <!-- First row for "Info" text -->
+                        <div class="row mb-3">
+                            <div class="col">
+                                <h5 class="card-title">Author information</h5>
+                            </div>
+                        </div>
+                        <!-- Second row for author details and profile photo -->
+                        <div class="row">
+                            <!-- Left column for username and email -->
+                            <div class="col">
+                                <p class="card-text" id="authorNameDisplay"></p>
+                                <p class="card-text" id="authorEmailDisplay"></p>
+                                <p class="card-text" id="authorRoleDisplay"></p>
+                            </div>
+                            <!-- Right column for profile photo -->
+                            <div class="col text-center">
+                                <div class="profile-photo-placeholder rounded-circle" id="profilePhotoDisplay"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+{{end}}
+
+
+{{define "js"}}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Placeholder elements
+            const exhibitId = window.location.pathname.split('/')[2];
+            const exhibitApiUrl = `http://localhost:8080/api/v1/exhibit/${exhibitId}`;
+
+            const assetDisplay = document.getElementById('assetDisplay');
+            const titleDisplay = document.getElementById('titleDisplay');
+            const descDisplay = document.getElementById('descDisplay');
+            const authorNameDisplay = document.getElementById('authorNameDisplay');
+            const authorEmailDisplay = document.getElementById('authorEmailDisplay');
+            const profilePhotoDisplay = document.getElementById('profilePhotoDisplay');
+
+            // Fetch exhibit data
+            fetch(exhibitApiUrl)
+                .then(response => response.json())
+                .then(data => {
+                    // Display exhibit data
+                    titleDisplay.textContent = data.Title;
+                    descDisplay.innerHTML = data.Description ? data.Description : '<span class="badge bg-light" style="font-weight: normal; font-size: small;">без опису</span>';
+                    authorNameDisplay.textContent = `Username: ${data.Author.username}`;
+                    authorEmailDisplay.textContent = `Email: ${data.Author.email}`;
+                    profilePhotoDisplay.innerHTML = `<img src="/api/v1/storage/users/${data.Author.ProfilePhotoPath}" alt="Profile photo" class="rounded-circle profile-photo-img" >`; // Replace with actual profile photo path
+
+                    if (data.Type.name === 'Photo'){
+                        assetDisplay.innerHTML = `<img src="/api/v1/storage/${data.AssetPath}" alt="${data.Type.name}" style="max-width: 100%; max-height: 80vh; cursor: pointer;">`; // Replace with actual asset path
+                        assetDisplay.addEventListener('click', () => {
+                            if (assetDisplay.requestFullscreen) {
+                                assetDisplay.requestFullscreen();
+                            } else if (assetDisplay.webkitRequestFullscreen) { /* Safari */
+                                assetDisplay.webkitRequestFullscreen();
+                            } else if (assetDisplay.msRequestFullscreen) { /* IE11 */
+                                assetDisplay.msRequestFullscreen();
+                            }
+                        });
+                    }else if (data.Type.name === 'Video') {
+                        assetDisplay.innerHTML = `<video controls style="max-width: 100%; max-height: 80vh; cursor: pointer;">
+                            <source src="/api/v1/storage/${data.AssetPath}" type="video/mp4"> <!-- Replace with actual asset path -->
+                            Your browser does not support the video tag.
+                        </video>`;
+                    }else if (data.Type.name === 'Audio') {
+                        assetDisplay.innerHTML = `<audio controls style="max-width: 100%; cursor: pointer;">
+                            <source src="/api/v1/storage/${data.AssetPath}" type="audio/mpeg"> <!-- Replace with actual asset path -->
+                            Your browser does not support the audio tag.
+                        </audio>`;
+                    }else{
+                        assetDisplay.innerHTML = `<object data="/api/v1/storage/${data.AssetPath}" type="application/pdf" style="width: 100%; height: 80vh;"> <!-- Replace with actual asset path --> <embed src="/api/v1/storage/${data.AssetPath}" type="application/pdf" style="width: 100%; height: 80vh;"> <!-- Replace with actual asset path -->
+                            </object>`;
+                    }
+                })
+                .catch(error => console.error('Error fetching exhibit data:', error));
+        });
+    </script>
+{{end}}

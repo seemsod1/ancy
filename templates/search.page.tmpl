@@ -1,0 +1,176 @@
+{{template "base" .}}
+
+{{define "content"}}
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-md-3">
+                <!-- Filters -->
+                <div class="card">
+                    <div class="card-header">
+                        Filters
+                    </div>
+                    <div class="card-body">
+                        <!-- Filter options go here -->
+                        <div class="mb-3">
+                            <label for="titleFilter" class="form-label">Username</label>
+                            <input type="text" id="titleFilter" class="form-control" placeholder="Search by username...">
+                        </div>
+                        <div class="mb-3">
+                            <label for="startDateFilter" class="form-label">Start Date</label>
+                            <input type="date" id="startDateFilter" class="form-control">
+                        </div>
+                        <div class="mb-3">
+                            <label for="endDateFilter" class="form-label">End Date</label>
+                            <input type="date" id="endDateFilter" class="form-control">
+                        </div>
+                        <div class="mb-3">
+                            <label for="typeFilter" class="form-label">Exhibit Type</label>
+                            <select id="typeFilter" class="form-select">
+
+                            </select>
+                        </div>
+                        <!-- Add more filters as needed -->
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-9">
+                <!-- Search Bar -->
+                <div class="input-group mb-3">
+                    <input type="text" id="searchInput" class="form-control" placeholder="Search by title...">
+                    <button class="btn btn-outline-secondary" type="button" id="searchButton">Search</button>
+                </div>
+                <!-- Exhibits -->
+                <div id="exhibitsList">
+                    <!-- Exhibits will be dynamically populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+{{end}}
+
+{{define "js"}}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('searchInput');
+            const titleFilter = document.getElementById('titleFilter');
+            const startDateFilter = document.getElementById('startDateFilter');
+            const endDateFilter = document.getElementById('endDateFilter');
+            const typeFilter = document.getElementById('typeFilter');
+            const searchButton = document.getElementById('searchButton');
+            const exhibitsList = document.getElementById('exhibitsList');
+
+            // Function to fetch exhibit types and populate dropdown
+            function fetchExhibitTypes() {
+                fetch('/api/v1/exhibit/types')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Clear previous options
+                        typeFilter.innerHTML = '<option value="">All Types</option>';
+
+                        // Populate exhibit types
+                        data.forEach(type => {
+                            const option = document.createElement('option');
+                            option.value = type.ID;
+                            option.textContent = type.name;
+                            typeFilter.appendChild(option);
+                        });
+                    })
+                    .catch(error => console.error('Error fetching exhibit types:', error));
+            }
+            fetchExhibitTypes();
+            // Function to fetch exhibits based on search and filter criteria
+            function fetchExhibits() {
+                const searchTerm = searchInput.value.trim();
+                const titleTerm = titleFilter.value.trim();
+                const startDateTerm = startDateFilter.value;
+                const endDateTerm = endDateFilter.value;
+                const typeTerm = typeFilter.value;
+
+                // Construct URL with query parameters
+                let url = '/api/v1/exhibit?';
+                let params = new URLSearchParams();
+
+                if (searchTerm !== '') params.append('title', searchTerm);
+                if (titleTerm !== '') params.append('username', titleTerm);
+                if (startDateTerm !== '') params.append('start_date', startDateTerm);
+                if (endDateTerm !== '') params.append('end_date', endDateTerm);
+                if (typeTerm !== '') params.append('type', typeTerm);
+
+                url += params.toString();
+
+                // Fetch exhibits
+                fetch(url)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.error){
+                        // Clear previous exhibits
+                        exhibitsList.innerHTML = '';
+
+                        // Populate exhibits
+                        data.forEach(exhibit => {
+                            const exhibitItem = document.createElement('div');
+                            exhibitItem.classList.add('card', 'mb-3');
+                            let type = '';
+                            if (exhibit.Type.name === 'Photo') {
+                                type = 'Photo';
+                            } else if (exhibit.Type.name === 'Video') {
+                                type = 'Video';
+                            } else if (exhibit.Type.name === 'Audio') {
+                                type = 'Audio';
+                            }else if (exhibit.Type.name === 'Text') {
+                                type = 'Text';
+                            }
+                            exhibitItem.classList.add('card', 'mb-3', 'hover-effect'); // Add a class for the hover effect
+                            exhibitItem.style.cursor = 'pointer';
+                            exhibitItem.addEventListener('click', function() {
+                                window.location.href = `/exhibit/${exhibit.ID}`;
+                            });
+
+                            exhibitItem.innerHTML = `
+                              <div class="row g-0">
+                                <div class="col-md-4">
+                                    <img src="/api/v1/storage/${exhibit.PreviewPath}" class="img-fluid rounded" alt="${exhibit.Title}">
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card-body">
+                                        <h5 class="card-title">${exhibit.Title}</h5>
+                                        <p class="card-text"><small class="text-muted">${type}</small></p>
+                                        <p class="card-text">${exhibit.Description ? exhibit.Description : '<span class="badge bg-light" style="font-weight: normal; font-size: small;">без опису</span>'}</p>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 mt-auto">
+                                    <div class="card-body text-end">
+                                        <div class="">
+                                            <p class="card-text "><small class="text-muted">${exhibit.Author.username}</small></p>
+                                        </div>
+                                        <div>
+                                            <p class="card-text "><small class="text-muted">Created: ${new Date(exhibit.CreatedAt).toLocaleDateString()}</small></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            `;
+
+
+                            exhibitsList.appendChild(exhibitItem);
+                        });
+                            const popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+                            const popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+                                return new bootstrap.Popover(popoverTriggerEl);
+                            });
+
+                        }else{
+                            console.error('No data or error in response');
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+            }
+
+            // Initial load of exhibits
+            fetchExhibits();
+
+            // Search button click event
+            searchButton.addEventListener('click', fetchExhibits);
+        });
+    </script>
+{{end}}

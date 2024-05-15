@@ -9,6 +9,7 @@ type Exhibit struct {
 	Type        ExhibitType `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 	Description string      `gorm:"size:255"`
 	AssetPath   string      `gorm:"size:255;not null"`
+	PreviewPath string      `gorm:"size:255;not null"`
 	StatusID    int
 	Status      ExhibitStatus `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 	AuthorID    int

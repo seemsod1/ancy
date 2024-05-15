@@ -202,6 +202,8 @@ func (m *Repository) GetExhibit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Repository) GetAllExhibits(w http.ResponseWriter, r *http.Request) {
+	typeFilter := r.URL.Query().Get("type")
+	title := r.URL.Query().Get("title")
 	status := r.URL.Query().Get("status")
 	username := r.URL.Query().Get("username")
 	startDateStr := r.URL.Query().Get("start_date")
@@ -230,6 +232,7 @@ func (m *Repository) GetAllExhibits(w http.ResponseWriter, r *http.Request) {
 
 	dbQuery := m.App.DB.Preload("Type").Preload("Status").Joins("JOIN exhibit_statuses ON exhibits.status_id = exhibit_statuses.id")
 	dbQuery = dbQuery.Joins("JOIN users ON exhibits.author_id = users.id")
+	dbQuery = dbQuery.Joins("JOIN exhibit_types ON exhibits.type_id = exhibit_types.id") // Join with ExhibitType table
 
 	if status != "" {
 		dbQuery = dbQuery.Where("exhibit_statuses.name = ?", status)
@@ -238,6 +241,15 @@ func (m *Repository) GetAllExhibits(w http.ResponseWriter, r *http.Request) {
 	if username != "" {
 		usernameLower := strings.ToLower(username)
 		dbQuery = dbQuery.Where("LOWER(users.username) LIKE ?", "%"+usernameLower+"%")
+	}
+
+	if title != "" {
+		titleLower := strings.ToLower(title)
+		dbQuery = dbQuery.Where("LOWER(exhibits.title) LIKE ?", "%"+titleLower+"%")
+	}
+	if typeFilter != "" { // Add condition for type filter
+
+		dbQuery = dbQuery.Where("exhibit_types.id = ?", typeFilter)
 	}
 
 	if !startDate.IsZero() && !endDate.IsZero() {
@@ -288,4 +300,16 @@ func (m Repository) GetUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user)
+}
+
+func (m *Repository) ExhibitTypes(w http.ResponseWriter, r *http.Request) {
+	var types []models.ExhibitType
+	if err := m.App.DB.Find(&types).Error; err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		rend.JSON(w, r, response.Error("failed to get exhibit types"))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(types)
 }
