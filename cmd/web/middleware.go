@@ -19,6 +19,7 @@ func NoSurf(next http.Handler) http.Handler {
 	return csrfHandler
 }
 
+// enableCORS enables CORS
 func enableCORS(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")

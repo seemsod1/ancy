@@ -67,7 +67,7 @@ func connectDB(env *config.EnvVariables) (*gorm.DB, error) {
 func loadEnv() (*config.EnvVariables, error) {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("Error loading .env file")
 	}
 
 	postgresHost := os.Getenv("POSTGRES_HOST")
